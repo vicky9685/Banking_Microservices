@@ -1,0 +1,74 @@
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+      routes:
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/auth/**
+        - id: customer-service
+          uri: lb://customer-service
+          predicates:
+            - Path=/api/customers/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: customerCB
+                fallbackUri: forward:/fallback/customers
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+        - id: account-service
+          uri: lb://account-service
+          predicates:
+            - Path=/api/accounts/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: accountCB
+                fallbackUri: forward:/fallback/accounts
+        - id: transaction-service
+          uri: lb://transaction-service
+          predicates:
+            - Path=/api/transactions/**,/api/transfers/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: txCB
+                fallbackUri: forward:/fallback/transactions
+        - id: workflow-service
+          uri: lb://workflow-service
+          predicates:
+            - Path=/api/workflows/**,/camunda/**,/engine-rest/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: wfCB
+                fallbackUri: forward:/fallback/transactions
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      customerCB:
+        baseConfig: default
+      accountCB:
+        baseConfig: default
+      txCB:
+        baseConfig: default
+      wfCB:
+        baseConfig: default

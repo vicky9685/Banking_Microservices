@@ -1,0 +1,26 @@
+steps:
+  # Run the deployment shell script inside the official Google Cloud SDK container
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Set up Docker access for Cloud Build
+        gcloud auth configure-docker ${_REGION}-docker.pkg.dev --quiet
+        
+        # Make script executable and run
+        chmod +x deploy/gcp-deploy.sh
+        ./deploy/gcp-deploy.sh
+    env:
+      - 'PROJECT_ID=$PROJECT_ID'
+      - 'JWT_SECRET=$_JWT_SECRET'
+      - 'DB_PASSWORD=$_DB_PASSWORD'
+      - 'REGION=$_REGION'
+
+substitutions:
+  _REGION: 'us-central1'
+  _JWT_SECRET: 'change-me-please-this-is-a-dev-only-secret-please-replace-32chars-min'
+  _DB_PASSWORD: 'postgres'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

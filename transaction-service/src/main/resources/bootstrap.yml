@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: transaction-service
+  config:
+    import:
+      - "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+      - "vault://"
+  cloud:
+    config:
+      fail-fast: false
+    vault:
+      uri: ${VAULT_URI:http://localhost:8200}
+      authentication: ${VAULT_AUTH:KUBERNETES}
+      kubernetes:
+        role: ${VAULT_ROLE:transaction-service}
+        service-account-token-file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      token: ${VAULT_TOKEN:}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: banking/common
+        application-name: banking/transaction-service
+        profile-separator: '/'
+        fail-fast: false
+      fail-fast: false
+      config:
+        lifecycle:
+          enabled: true

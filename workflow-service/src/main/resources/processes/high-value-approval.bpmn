@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="defs-high-value-approval" targetNamespace="http://bank.com/bpmn">
+  <bpmn:process id="high-value-approval" name="High-Value Transfer Approval" isExecutable="true" camunda:historyTimeToLive="180">
+    <bpmn:startEvent id="StartEvent_Initiated" name="Fraud CRITICAL raised">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_Initiated" targetRef="Task_LookupCustomer"/>
+
+    <bpmn:serviceTask id="Task_LookupCustomer" name="Lookup customer tier"
+                      camunda:delegateExpression="${customerLookupDelegate}">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_LookupCustomer" targetRef="UserTask_Approve"/>
+
+    <bpmn:userTask id="UserTask_Approve" name="Approve high-value transfer"
+                   camunda:candidateGroups="risk-officers"
+                   camunda:formKey="approve-transfer"
+                   camunda:dueDate="${dueDate}">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="approved" label="Approve?" type="boolean"/>
+          <camunda:formField id="comment" label="Comment" type="string"/>
+        </camunda:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="UserTask_Approve" targetRef="Gateway_Decision"/>
+
+    <bpmn:exclusiveGateway id="Gateway_Decision" name="Approved?">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_Approved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Rejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:sequenceFlow id="Flow_Approved" sourceRef="Gateway_Decision" targetRef="Task_Resume">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${approved == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Rejected" sourceRef="Gateway_Decision" targetRef="Task_Cancel">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${approved == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="Task_Resume" name="Resume transfer saga"
+                      camunda:delegateExpression="${transferCallbackDelegate}">
+      <bpmn:incoming>Flow_Approved</bpmn:incoming>
+      <bpmn:outgoing>Flow_End_Approved</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_Cancel" name="Cancel transfer saga"
+                      camunda:delegateExpression="${transferCancelDelegate}">
+      <bpmn:incoming>Flow_Rejected</bpmn:incoming>
+      <bpmn:outgoing>Flow_End_Rejected</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_Approved" name="Approved">
+      <bpmn:incoming>Flow_End_Approved</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="EndEvent_Rejected" name="Rejected">
+      <bpmn:incoming>Flow_End_Rejected</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_End_Approved" sourceRef="Task_Resume" targetRef="EndEvent_Approved"/>
+    <bpmn:sequenceFlow id="Flow_End_Rejected" sourceRef="Task_Cancel" targetRef="EndEvent_Rejected"/>
+
+    <!-- SLA timer: if no decision in 30 minutes, escalate to senior risk officer -->
+    <bpmn:boundaryEvent id="Boundary_Timer" attachedToRef="UserTask_Approve" cancelActivity="false">
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">PT30M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+      <bpmn:outgoing>Flow_Escalate</bpmn:outgoing>
+    </bpmn:boundaryEvent>
+
+    <bpmn:sequenceFlow id="Flow_Escalate" sourceRef="Boundary_Timer" targetRef="Task_Escalate"/>
+
+    <bpmn:serviceTask id="Task_Escalate" name="Escalate to senior officer"
+                      camunda:delegateExpression="${escalationDelegate}">
+      <bpmn:incoming>Flow_Escalate</bpmn:incoming>
+      <bpmn:outgoing>Flow_EndEscalation</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_Escalated" name="Escalated">
+      <bpmn:incoming>Flow_EndEscalation</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_EndEscalation" sourceRef="Task_Escalate" targetRef="EndEvent_Escalated"/>
+  </bpmn:process>
+</bpmn:definitions>

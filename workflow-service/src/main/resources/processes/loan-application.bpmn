@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="defs-loan-application" targetNamespace="http://bank.com/bpmn">
+  <bpmn:process id="loan-application" name="Loan Application" isExecutable="true" camunda:historyTimeToLive="365">
+    <bpmn:startEvent id="StartEvent_Submitted" name="Application submitted">
+      <bpmn:outgoing>F1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:sequenceFlow id="F1" sourceRef="StartEvent_Submitted" targetRef="Task_CreditCheck"/>
+
+    <bpmn:serviceTask id="Task_CreditCheck" name="Pull credit score"
+                      camunda:delegateExpression="${creditCheckDelegate}">
+      <bpmn:incoming>F1</bpmn:incoming>
+      <bpmn:outgoing>F2</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="F2" sourceRef="Task_CreditCheck" targetRef="Task_KycCheck"/>
+
+    <bpmn:serviceTask id="Task_KycCheck" name="Verify KYC status"
+                      camunda:delegateExpression="${kycCheckDelegate}">
+      <bpmn:incoming>F2</bpmn:incoming>
+      <bpmn:outgoing>F3</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="F3" sourceRef="Task_KycCheck" targetRef="Task_CreditDecision"/>
+
+    <bpmn:businessRuleTask id="Task_CreditDecision" name="Credit decision (DMN)"
+                           camunda:decisionRef="credit-decision"
+                           camunda:resultVariable="creditDecision"
+                           camunda:mapDecisionResult="singleEntry">
+      <bpmn:incoming>F3</bpmn:incoming>
+      <bpmn:outgoing>F4</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+
+    <bpmn:sequenceFlow id="F4" sourceRef="Task_CreditDecision" targetRef="Gateway_Decision"/>
+
+    <bpmn:exclusiveGateway id="Gateway_Decision" name="Decision">
+      <bpmn:incoming>F4</bpmn:incoming>
+      <bpmn:outgoing>Flow_AutoApprove</bpmn:outgoing>
+      <bpmn:outgoing>Flow_HumanReview</bpmn:outgoing>
+      <bpmn:outgoing>Flow_AutoReject</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:sequenceFlow id="Flow_AutoApprove" sourceRef="Gateway_Decision" targetRef="Task_Disburse">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${creditDecision == "APPROVE"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_HumanReview" sourceRef="Gateway_Decision" targetRef="UserTask_Underwrite">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${creditDecision == "REVIEW"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_AutoReject" sourceRef="Gateway_Decision" targetRef="EndEvent_Rejected">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${creditDecision == "REJECT"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:userTask id="UserTask_Underwrite" name="Underwriter review"
+                   camunda:candidateGroups="underwriters"
+                   camunda:formKey="underwrite-loan">
+      <bpmn:incoming>Flow_HumanReview</bpmn:incoming>
+      <bpmn:outgoing>F5</bpmn:outgoing>
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="approved" label="Approve?" type="boolean"/>
+          <camunda:formField id="adjustedAmount" label="Adjusted amount" type="long"/>
+          <camunda:formField id="rateBps" label="Rate (bps)" type="long"/>
+          <camunda:formField id="comment" label="Comment" type="string"/>
+        </camunda:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:sequenceFlow id="F5" sourceRef="UserTask_Underwrite" targetRef="Gateway_Underwriter"/>
+
+    <bpmn:exclusiveGateway id="Gateway_Underwriter" name="Underwriter approved?">
+      <bpmn:incoming>F5</bpmn:incoming>
+      <bpmn:outgoing>Flow_UW_Approve</bpmn:outgoing>
+      <bpmn:outgoing>Flow_UW_Reject</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:sequenceFlow id="Flow_UW_Approve" sourceRef="Gateway_Underwriter" targetRef="Task_Disburse">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${approved == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_UW_Reject" sourceRef="Gateway_Underwriter" targetRef="EndEvent_Rejected">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${approved == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="Task_Disburse" name="Open loan account and disburse"
+                      camunda:delegateExpression="${loanDisbursementDelegate}">
+      <bpmn:incoming>Flow_AutoApprove</bpmn:incoming>
+      <bpmn:incoming>Flow_UW_Approve</bpmn:incoming>
+      <bpmn:outgoing>F6</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="F6" sourceRef="Task_Disburse" targetRef="EndEvent_Approved"/>
+
+    <bpmn:endEvent id="EndEvent_Approved" name="Loan funded">
+      <bpmn:incoming>F6</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="EndEvent_Rejected" name="Application rejected">
+      <bpmn:incoming>Flow_AutoReject</bpmn:incoming>
+      <bpmn:incoming>Flow_UW_Reject</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

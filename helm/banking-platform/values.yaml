@@ -1,0 +1,306 @@
+# =====================================================================
+# banking-platform — production-leaning defaults.
+# Override per-environment via values-local.yaml or values-gcp.yaml.
+# =====================================================================
+
+global:
+  imageRegistry: ghcr.io/banking-platform
+  imageTag: "1.0.0"
+  imagePullPolicy: IfNotPresent
+  storageClass: ""
+  domain: bank.local
+
+# ----- Cross-cutting security defaults -----
+security:
+  # Pod Security Standards label (applied to namespace via NS manifest)
+  podSecurityStandard: restricted
+  # NetworkPolicy: deny-all then explicit allows
+  networkPolicy:
+    enabled: true
+  # PodSecurityContext applied to every workload
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  # mTLS via cert-manager (assumes cert-manager + a ClusterIssuer named 'banking-ca')
+  tls:
+    enabled: false
+    issuer: banking-ca
+
+# ----- Governance defaults -----
+governance:
+  resourceQuota:
+    enabled: true
+    cpu: "8"
+    memory: "16Gi"
+    pods: "50"
+  limitRange:
+    enabled: true
+    defaultCpu: "500m"
+    defaultMemory: "512Mi"
+    defaultRequestCpu: "100m"
+    defaultRequestMemory: "256Mi"
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  # Audit log sidecar (Fluent Bit) — disabled by default in local
+  audit:
+    enabled: false
+
+# ----- Vault (HashiCorp) -----
+vault:
+  enabled: true
+  server:
+    dev:
+      enabled: false        # disabled here; values-local overrides
+    standalone:
+      enabled: true
+    dataStorage:
+      enabled: true
+      size: 1Gi
+  injector:
+    enabled: true
+
+# Vault integration settings used by all services
+vaultIntegration:
+  address: "http://vault.{{ .Release.Namespace }}.svc:8200"
+  authPath: "kubernetes"
+  kvMount: "secret"
+  kvVersion: 2
+  # KV paths per service. Spring Cloud Vault reads:
+  #   secret/banking/<service>  and  secret/banking/common
+  basePath: "banking"
+
+# ----- Messaging -----
+kafka:
+  enabled: true
+  listeners:
+    client:
+      protocol: PLAINTEXT
+  controller:
+    replicaCount: 1
+  broker:
+    replicaCount: 1
+
+solace:
+  enabled: true
+  # PubSub+ Standard (free) image. For HA, use solace/solace-pubsub-enterprise.
+  image:
+    repository: solace/solace-pubsub-standard
+    tag: latest
+  service:
+    type: ClusterIP
+    smfPort: 55555
+    semp: 8080
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1500m
+      memory: 2Gi
+  adminPasswordSecret: solace-admin
+  msgVpn: default
+
+# ----- Datastores -----
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: postgres-credentials
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: postgres-password
+    database: bankingdb
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+    initdb:
+      scriptsConfigMap: postgres-init-scripts
+
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+
+# ----- Observability -----
+monitoring:
+  enabled: false
+  prometheus:
+    prometheusSpec:
+      retention: 7d
+
+# ----- Ingress -----
+ingress:
+  enabled: false
+  className: nginx
+  host: api.bank.local
+  tls: false
+
+# =====================================================================
+# Service catalog — driven by a single map for DRY templates.
+# Each service inherits security/governance defaults above.
+# =====================================================================
+services:
+
+  config-server:
+    enabled: true
+    replicas: 1
+    port: 8888
+    healthPath: /actuator/health
+    image:
+      name: config-server
+    vault:
+      enabled: false
+    env:
+      SPRING_PROFILES_ACTIVE: native
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+
+  discovery-server:
+    enabled: true
+    replicas: 1
+    port: 8761
+    healthPath: /actuator/health
+    image: { name: discovery-server }
+    vault: { enabled: false }
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+
+  api-gateway:
+    enabled: true
+    replicas: 2
+    port: 8080
+    healthPath: /actuator/health
+    image: { name: api-gateway }
+    vault:
+      enabled: true
+      role: api-gateway
+      kvPaths: ["banking/common", "banking/api-gateway"]
+    env:
+      REDIS_HOST: "{{ .Release.Name }}-redis-master"
+    exposeIngress: true
+    resources:
+      requests: { cpu: 200m, memory: 384Mi }
+      limits:   { cpu: 1000m, memory: 768Mi }
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      cpuPercent: 70
+
+  auth-service:
+    enabled: true
+    replicas: 2
+    port: 8085
+    healthPath: /actuator/health
+    image: { name: auth-service }
+    vault:
+      enabled: true
+      role: auth-service
+      kvPaths: ["banking/common", "banking/auth-service"]
+    env:
+      DB_HOST: "{{ .Release.Name }}-postgresql"
+      DB_NAME: authdb
+    resources:
+      requests: { cpu: 200m, memory: 384Mi }
+      limits:   { cpu: 1000m, memory: 768Mi }
+
+  customer-service:
+    enabled: true
+    replicas: 2
+    port: 8081
+    image: { name: customer-service }
+    vault:
+      enabled: true
+      role: customer-service
+      kvPaths: ["banking/common", "banking/customer-service"]
+    env:
+      DB_HOST: "{{ .Release.Name }}-postgresql"
+      DB_NAME: customerdb
+      KAFKA_BROKERS: "{{ .Release.Name }}-kafka:9092"
+    resources:
+      requests: { cpu: 200m, memory: 384Mi }
+      limits:   { cpu: 1000m, memory: 768Mi }
+
+  account-service:
+    enabled: true
+    replicas: 2
+    port: 8082
+    image: { name: account-service }
+    vault:
+      enabled: true
+      role: account-service
+      kvPaths: ["banking/common", "banking/account-service"]
+    env:
+      DB_HOST: "{{ .Release.Name }}-postgresql"
+      DB_NAME: accountdb
+      KAFKA_BROKERS: "{{ .Release.Name }}-kafka:9092"
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 1Gi }
+
+  transaction-service:
+    enabled: true
+    replicas: 2
+    port: 8083
+    image: { name: transaction-service }
+    vault:
+      enabled: true
+      role: transaction-service
+      kvPaths: ["banking/common", "banking/transaction-service"]
+    env:
+      DB_HOST: "{{ .Release.Name }}-postgresql"
+      DB_NAME: transactiondb
+      KAFKA_BROKERS: "{{ .Release.Name }}-kafka:9092"
+      SOLACE_HOST: "tcp://{{ .Release.Name }}-solace:55555"
+      SOLACE_VPN: default
+    resources:
+      requests: { cpu: 300m, memory: 512Mi }
+      limits:   { cpu: 1500m, memory: 1Gi }
+
+  notification-service:
+    enabled: true
+    replicas: 2
+    port: 8086
+    image: { name: notification-service }
+    vault:
+      enabled: true
+      role: notification-service
+      kvPaths: ["banking/common", "banking/notification-service"]
+    env:
+      KAFKA_BROKERS: "{{ .Release.Name }}-kafka:9092"
+      SOLACE_HOST: "tcp://{{ .Release.Name }}-solace:55555"
+      SOLACE_VPN: default
+    resources:
+      requests: { cpu: 150m, memory: 384Mi }
+      limits:   { cpu: 800m, memory: 768Mi }
+
+  workflow-service:
+    enabled: true
+    replicas: 1                   # Camunda engine relies on its DB for clustering
+    port: 8087
+    image: { name: workflow-service }
+    vault:
+      enabled: true
+      role: workflow-service
+      kvPaths: ["banking/common", "banking/workflow-service"]
+    env:
+      DB_HOST: "{{ .Release.Name }}-postgresql"
+      DB_NAME: workflowdb
+      TRANSACTION_SERVICE_URL: "http://{{ .Release.Name }}-transaction-service:8083"
+      ACCOUNT_SERVICE_URL: "http://{{ .Release.Name }}-account-service:8082"
+    resources:
+      requests: { cpu: 300m, memory: 768Mi }
+      limits:   { cpu: 1500m, memory: 1500Mi }

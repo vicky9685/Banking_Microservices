@@ -1,0 +1,60 @@
+{{- if .Values.governance.resourceQuota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ .Release.Name }}-quota
+  labels:
+    banking/governance: enabled
+spec:
+  hard:
+    requests.cpu: {{ .Values.governance.resourceQuota.cpu | quote }}
+    requests.memory: {{ .Values.governance.resourceQuota.memory | quote }}
+    limits.cpu: {{ .Values.governance.resourceQuota.cpu | quote }}
+    limits.memory: {{ .Values.governance.resourceQuota.memory | quote }}
+    pods: {{ .Values.governance.resourceQuota.pods | quote }}
+---
+{{- end }}
+{{- if .Values.governance.limitRange.enabled }}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ .Release.Name }}-limits
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: {{ .Values.governance.limitRange.defaultCpu | quote }}
+        memory: {{ .Values.governance.limitRange.defaultMemory | quote }}
+      defaultRequest:
+        cpu: {{ .Values.governance.limitRange.defaultRequestCpu | quote }}
+        memory: {{ .Values.governance.limitRange.defaultRequestMemory | quote }}
+---
+{{- end }}
+{{- if .Values.security.networkPolicy.enabled }}
+# Deny-all baseline; explicit allows added per service below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Allow DNS for everyone (egress to kube-dns).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+{{- end }}

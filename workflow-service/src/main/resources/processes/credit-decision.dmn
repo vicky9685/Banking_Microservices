@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             id="defs-credit-decision" name="Credit Decision"
+             namespace="http://bank.com/dmn"
+             exporter="banking-platform" exporterVersion="1.0">
+  <decision id="credit-decision" name="Credit Decision">
+    <decisionTable id="DT" hitPolicy="FIRST">
+      <input id="in_score" label="Credit Score" camunda:inputVariable="creditScore">
+        <inputExpression id="ie_score" typeRef="integer">
+          <text>creditScore</text>
+        </inputExpression>
+      </input>
+      <input id="in_amount" label="Requested Amount" camunda:inputVariable="amount">
+        <inputExpression id="ie_amount" typeRef="long">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <input id="in_kyc" label="KYC Status" camunda:inputVariable="kycStatus">
+        <inputExpression id="ie_kyc" typeRef="string">
+          <text>kycStatus</text>
+        </inputExpression>
+      </input>
+      <output id="out_decision" label="Decision" typeRef="string"/>
+
+      <!-- 1. Anyone without verified KYC is auto-rejected -->
+      <rule id="r-kyc">
+        <inputEntry id="i1a"><text>-</text></inputEntry>
+        <inputEntry id="i1b"><text>-</text></inputEntry>
+        <inputEntry id="i1c"><text>not("VERIFIED")</text></inputEntry>
+        <outputEntry id="o1"><text>"REJECT"</text></outputEntry>
+      </rule>
+
+      <!-- 2. Very low score: reject -->
+      <rule id="r-low-score">
+        <inputEntry id="i2a"><text>&lt; 500</text></inputEntry>
+        <inputEntry id="i2b"><text>-</text></inputEntry>
+        <inputEntry id="i2c"><text>"VERIFIED"</text></inputEntry>
+        <outputEntry id="o2"><text>"REJECT"</text></outputEntry>
+      </rule>
+
+      <!-- 3. Excellent score + small amount: auto-approve -->
+      <rule id="r-auto-approve">
+        <inputEntry id="i3a"><text>&gt;= 750</text></inputEntry>
+        <inputEntry id="i3b"><text>&lt;= 50000</text></inputEntry>
+        <inputEntry id="i3c"><text>"VERIFIED"</text></inputEntry>
+        <outputEntry id="o3"><text>"APPROVE"</text></outputEntry>
+      </rule>
+
+      <!-- 4. Everything else: human review -->
+      <rule id="r-review">
+        <inputEntry id="i4a"><text>-</text></inputEntry>
+        <inputEntry id="i4b"><text>-</text></inputEntry>
+        <inputEntry id="i4c"><text>"VERIFIED"</text></inputEntry>
+        <outputEntry id="o4"><text>"REVIEW"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

@@ -1,0 +1,53 @@
+server:
+  port: 8087
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:workflowdb}
+    username: ${db.username:${DB_USER:postgres}}
+    password: ${db.password:${DB_PASSWORD:postgres}}
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 3
+  jpa:
+    hibernate:
+      ddl-auto: none
+
+# Camunda 7 CE engine config
+camunda:
+  bpm:
+    # Engine will create its own schema in workflowdb
+    database:
+      schema-update: true
+      type: postgres
+    job-execution:
+      enabled: true
+      core-pool-size: 5
+      max-pool-size: 10
+      queue-capacity: 100
+    metrics:
+      enabled: true
+      db-reporter-activate: true
+    auto-deployment-enabled: true
+    deployment-resource-pattern: "classpath*:/processes/**/*"
+    history-level: full
+    authorization:
+      enabled: true
+    admin-user:
+      id: ${camunda.admin.username:admin}
+      password: ${camunda.admin.password:admin}
+      firstName: System
+      lastName: Admin
+    filter:
+      create: All tasks
+    webapp:
+      index-redirect-enabled: true
+      header-security:
+        content-security-policy-disabled: false
+
+app:
+  callbacks:
+    transaction-service:
+      url: ${TRANSACTION_SERVICE_URL:http://transaction-service:8083}
+    account-service:
+      url: ${ACCOUNT_SERVICE_URL:http://account-service:8082}

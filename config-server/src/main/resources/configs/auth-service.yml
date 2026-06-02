@@ -1,0 +1,26 @@
+server:
+  port: 8085
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:authdb}
+    username: ${db.username:${DB_USER:postgres}}
+    password: ${db.password:${DB_PASSWORD:postgres}}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+# JWT signing key is fetched from Vault transit/KV via Spring Cloud Vault. Fallback to JWT_SECRET.
+app:
+  security:
+    jwt:
+      secret: ${jwt.signing-key:${JWT_SECRET:change-me-please-this-is-a-dev-only-secret-please-replace-32chars-min}}
+      issuer: banking-platform
+      expiration-ms: 900000   # 15 min access token
+      refresh-expiration-ms: 86400000

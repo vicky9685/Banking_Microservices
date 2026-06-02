@@ -1,0 +1,38 @@
+apiVersion: v2
+name: banking-platform
+description: Banking microservices platform (Spring Boot 3 / Java 21) with Vault, Kafka, Solace, PostgreSQL
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Platform Engineering
+keywords:
+  - banking
+  - microservices
+  - vault
+  - kafka
+  - solace
+  - saga
+
+dependencies:
+  - name: postgresql
+    version: "15.5.38"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: postgresql.enabled
+  - name: redis
+    version: "20.2.1"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: redis.enabled
+  - name: kafka
+    version: "30.1.8"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: kafka.enabled
+  - name: vault
+    version: "0.28.1"
+    repository: https://helm.releases.hashicorp.com
+    condition: vault.enabled
+  - name: kube-prometheus-stack
+    version: "65.2.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: monitoring.enabled
+    alias: monitoring

@@ -1,0 +1,80 @@
+package com.bank.transaction.fraud
+
+import com.bank.transaction.fraud.FraudContext
+import com.bank.common.events.FraudAlert.Severity
+import java.math.BigDecimal
+
+global org.slf4j.Logger logger
+
+// ---------------------------------------------------------------------------
+// Rule set: AML / fraud detection. Salience controls evaluation order — higher
+// severity rules run first so they can short-circuit downstream cheaper checks
+// if the engine is run in stream/firstMatch modes in future.
+// ---------------------------------------------------------------------------
+
+rule "Critical: amount exceeds 50k"
+    salience 100
+    when
+        $ctx : FraudContext( amount >= new BigDecimal("50000") )
+    then
+        $ctx.raise(Severity.CRITICAL, "amount-above-critical-threshold",
+                   "Transfer amount " + $ctx.getAmount() + " exceeds critical threshold (50000)");
+end
+
+rule "High: amount between 10k and 50k"
+    salience 90
+    when
+        $ctx : FraudContext( amount >= new BigDecimal("10000"),
+                             amount <  new BigDecimal("50000") )
+    then
+        $ctx.raise(Severity.HIGH, "amount-above-high-threshold",
+                   "Transfer amount " + $ctx.getAmount() + " exceeds high-value threshold (10000)");
+end
+
+rule "High: velocity - more than 10 transfers in a day"
+    salience 80
+    when
+        $ctx : FraudContext( dailyTransferCount > 10 )
+    then
+        $ctx.raise(Severity.HIGH, "velocity-daily-count",
+                   "Customer has " + $ctx.getDailyTransferCount() + " transfers today");
+end
+
+rule "High: daily aggregate exceeds 100k"
+    salience 80
+    when
+        $ctx : FraudContext( dailyTransferTotal >= new BigDecimal("100000") )
+    then
+        $ctx.raise(Severity.HIGH, "velocity-daily-total",
+                   "Daily aggregate " + $ctx.getDailyTransferTotal() + " exceeds 100000");
+end
+
+rule "Medium: unknown counterparty over 1k"
+    salience 60
+    when
+        $ctx : FraudContext( !knownCounterparty,
+                             amount >= new BigDecimal("1000") )
+    then
+        $ctx.raise(Severity.MEDIUM, "unknown-counterparty",
+                   "First-time recipient with amount " + $ctx.getAmount());
+end
+
+rule "Critical: high-risk country with amount over 500"
+    salience 95
+    when
+        $ctx : FraudContext( highRiskCountry,
+                             amount >= new BigDecimal("500") )
+    then
+        $ctx.raise(Severity.CRITICAL, "high-risk-jurisdiction",
+                   "Transfer to/from high-risk jurisdiction with amount " + $ctx.getAmount());
+end
+
+rule "Low: micro-transfer pattern - more than 5 today"
+    salience 30
+    when
+        $ctx : FraudContext( dailyTransferCount > 5,
+                             amount < new BigDecimal("10") )
+    then
+        $ctx.raise(Severity.LOW, "micro-transfer-pattern",
+                   "Possible structuring: many micro-transfers");
+end

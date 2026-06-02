@@ -1,0 +1,20 @@
+Banking platform release {{ .Release.Name }} deployed in namespace {{ .Release.Namespace }}.
+
+Components:
+  - Vault (secrets):       {{ .Release.Name }}-vault
+  - PostgreSQL:            {{ .Release.Name }}-postgresql
+  - Redis:                 {{ .Release.Name }}-redis-master
+  - Kafka:                 {{ .Release.Name }}-kafka
+  - Solace PubSub+:        {{ .Release.Name }}-solace
+  - API Gateway:           {{ .Release.Name }}-api-gateway
+
+Next:
+  1. Wait for the vault-bootstrap Job to finish:
+       kubectl -n {{ .Release.Namespace }} wait --for=condition=complete \
+         job/{{ .Release.Name }}-vault-bootstrap --timeout=300s
+  2. Port-forward the gateway:
+       kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }}-api-gateway 8080:8080
+  3. Try:  curl http://localhost:8080/actuator/health
+{{ if .Values.ingress.enabled }}
+  Ingress: https://{{ .Values.ingress.host }}
+{{ end }}

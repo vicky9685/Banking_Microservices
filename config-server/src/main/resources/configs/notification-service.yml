@@ -1,0 +1,26 @@
+server:
+  port: 8086
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.bank.*"
+
+solace:
+  jms:
+    host: ${SOLACE_HOST:tcp://localhost:55555}
+    msg-vpn: ${SOLACE_VPN:default}
+    client-username: ${solace.username:default}
+    client-password: ${solace.password:default}
+    direct-transport: false
+
+app:
+  solace:
+    fraud-alerts-topic: banking/fraud/alerts/v1
+    customer-alerts-topic-prefix: banking/customer/alerts/v1

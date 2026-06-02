@@ -1,0 +1,104 @@
+{{- if .Values.vault.enabled }}
+---
+# ServiceAccount the bootstrap Job uses to talk to Vault.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-vault-bootstrap
+---
+# Minimal ClusterRoleBinding for the K8s auth method to validate tokens.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-vault-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: {{ .Release.Namespace }}
+---
+# Vault policies + KV seed values are scripted in a Job. Idempotent.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-vault-bootstrap
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ .Release.Name }}-vault-bootstrap
+      containers:
+        - name: bootstrap
+          image: hashicorp/vault:1.18
+          env:
+            - name: VAULT_ADDR
+              value: {{ tpl .Values.vaultIntegration.address . | quote }}
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-root-token
+                  key: token
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              # Wait until Vault is reachable
+              for i in $(seq 1 60); do
+                if vault status >/dev/null 2>&1; then break; fi
+                sleep 2
+              done
+
+              # Enable KV v2 if not already
+              vault secrets enable -path=secret -version=2 kv 2>/dev/null || true
+              # Enable Kubernetes auth if not already
+              vault auth enable kubernetes 2>/dev/null || true
+
+              vault write auth/kubernetes/config \
+                kubernetes_host="https://${KUBERNETES_PORT_443_TCP_ADDR}:443"
+
+              # Service-specific policies + roles
+              for svc in api-gateway auth-service customer-service account-service transaction-service notification-service workflow-service; do
+                vault policy write banking-${svc} - <<EOF
+              path "secret/data/banking/common"           { capabilities = ["read"] }
+              path "secret/data/banking/${svc}"           { capabilities = ["read"] }
+              path "secret/metadata/banking/${svc}"       { capabilities = ["read"] }
+              EOF
+                vault write auth/kubernetes/role/${svc} \
+                  bound_service_account_names="{{ .Release.Name }}-${svc}-sa" \
+                  bound_service_account_namespaces="{{ .Release.Namespace }}" \
+                  policies="banking-${svc}" \
+                  ttl="1h"
+              done
+
+              # Seed initial KV secrets (idempotent put). Override with real secrets in production.
+              vault kv put secret/banking/common \
+                jwt.signing-key="$(head -c 48 /dev/urandom | base64 | tr -d '\n')"
+
+              for svc_db in auth-service:authdb customer-service:customerdb account-service:accountdb transaction-service:transactiondb workflow-service:workflowdb; do
+                svc="${svc_db%%:*}"
+                vault kv put secret/banking/${svc} \
+                  db.username="postgres" \
+                  db.password="${POSTGRES_PASSWORD:-postgres}" \
+                  solace.username="banking-${svc}" \
+                  solace.password="$(head -c 24 /dev/urandom | base64 | tr -d '\n=')"
+              done
+
+              # Services without DB
+              vault kv put secret/banking/api-gateway          dummy=1 || true
+              vault kv put secret/banking/notification-service \
+                solace.username="banking-notification" \
+                solace.password="$(head -c 24 /dev/urandom | base64 | tr -d '\n=')"
+
+              # Camunda admin credentials for workflow-service
+              vault kv patch secret/banking/workflow-service \
+                camunda.admin.username="admin" \
+                camunda.admin.password="$(head -c 16 /dev/urandom | base64 | tr -d '\n=')" || true
+{{- end }}

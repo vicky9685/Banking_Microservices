@@ -1,0 +1,227 @@
+{{- /*
+Iterates over .Values.services and renders one Deployment + Service + ServiceAccount
++ NetworkPolicy + PDB + HPA + ServiceMonitor per enabled service.
+
+Vault auth uses the K8s ServiceAccount token, mounted by default.
+*/ -}}
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+{{- $ctx := $ -}}
+{{- $root := merge (dict "name" $name "tier" "application") $ctx -}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "banking.serviceAccountName" $root }}
+  labels:
+    {{- include "banking.labels" $root | nindent 4 }}
+  {{- if $svc.vault.enabled }}
+  annotations:
+    banking/vault-role: {{ $svc.vault.role | quote }}
+  {{- end }}
+automountServiceAccountToken: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $ctx.Release.Name }}-{{ $name }}
+  labels:
+    {{- include "banking.labels" $root | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: http
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "banking.selectorLabels" $root | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $ctx.Release.Name }}-{{ $name }}
+  labels:
+    {{- include "banking.labels" $root | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas | default 1 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "banking.selectorLabels" $root | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "banking.labels" $root | nindent 8 }}
+      annotations:
+        # Force rollout when config-server config changes
+        checksum/config: {{ printf "%s-%s" $name $ctx.Chart.AppVersion | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ $svc.port }}"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: {{ include "banking.serviceAccountName" $root }}
+      automountServiceAccountToken: true
+      securityContext:
+        {{- toYaml $ctx.Values.security.podSecurityContext | nindent 8 }}
+      containers:
+        - name: app
+          image: {{ include "banking.image" (dict "Values" $ctx.Values "service" $svc) | quote }}
+          imagePullPolicy: {{ $ctx.Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml $ctx.Values.security.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          env:
+            - name: SERVER_PORT
+              value: "{{ $svc.port }}"
+            - name: SPRING_APPLICATION_NAME
+              value: {{ $name | quote }}
+            - name: CONFIG_SERVER_URL
+              value: "http://{{ $ctx.Release.Name }}-config-server:8888"
+            - name: EUREKA_URL
+              value: "http://{{ $ctx.Release.Name }}-discovery-server:8761/eureka/"
+            {{- if $svc.vault.enabled }}
+            - name: VAULT_URI
+              value: {{ tpl $ctx.Values.vaultIntegration.address $ctx | quote }}
+            - name: VAULT_AUTH
+              value: "KUBERNETES"
+            - name: VAULT_ROLE
+              value: {{ $svc.vault.role | quote }}
+            {{- end }}
+            {{- range $k, $v := $svc.env }}
+            - name: {{ $k }}
+              value: {{ tpl (toString $v) $ctx | quote }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: {{ $svc.healthPath | default "/actuator/health/liveness" }}
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: {{ $svc.healthPath | default "/actuator/health/readiness" }}
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- if and $ctx.Values.governance.podDisruptionBudget.enabled (gt (int ($svc.replicas | default 1)) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $ctx.Release.Name }}-{{ $name }}-pdb
+spec:
+  minAvailable: {{ $ctx.Values.governance.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "banking.selectorLabels" $root | nindent 6 }}
+{{- end }}
+{{- if and $svc.hpa $svc.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $ctx.Release.Name }}-{{ $name }}-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $ctx.Release.Name }}-{{ $name }}
+  minReplicas: {{ $svc.hpa.minReplicas }}
+  maxReplicas: {{ $svc.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $svc.hpa.cpuPercent | default 70 }}
+{{- end }}
+{{- if $ctx.Values.security.networkPolicy.enabled }}
+---
+# Allow intra-namespace traffic to this service from labelled banking pods only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $ctx.Release.Name }}-{{ $name }}-allow
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "banking.selectorLabels" $root | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: banking-platform
+      ports:
+        - protocol: TCP
+          port: {{ $svc.port }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: banking-platform
+    # Allow egress to Vault, DB, Kafka, Solace, Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: solace
+{{- end }}
+{{- if $ctx.Values.monitoring.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $ctx.Release.Name }}-{{ $name }}-monitor
+  labels:
+    release: {{ $ctx.Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "banking.selectorLabels" $root | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 30s
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: customer-service
+  config:
+    import:
+      - "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+      - "vault://"
+  cloud:
+    config:
+      fail-fast: false
+    vault:
+      uri: ${VAULT_URI:http://localhost:8200}
+      authentication: ${VAULT_AUTH:KUBERNETES}
+      kubernetes:
+        role: ${VAULT_ROLE:customer-service}
+        service-account-token-file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      # token auth used for local/dev only
+      token: ${VAULT_TOKEN:}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: banking/common
+        application-name: banking/customer-service
+        profile-separator: '/'
+        fail-fast: false
+      fail-fast: false
+      generic:
+        enabled: false
+      config:
+        lifecycle:
+          enabled: true
+          min-renewal: 10s
+          expiry-threshold: 1m

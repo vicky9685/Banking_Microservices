@@ -1,0 +1,68 @@
+# Local kind cluster overrides.
+global:
+  imageRegistry: localhost:5001/banking
+  imageTag: dev
+  imagePullPolicy: IfNotPresent
+  domain: bank.localtest.me
+
+security:
+  tls:
+    enabled: false
+
+governance:
+  resourceQuota:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false
+  audit:
+    enabled: false
+
+vault:
+  server:
+    dev:
+      enabled: true        # ephemeral root token, OK for local only
+      devRootToken: "root"
+    standalone:
+      enabled: false
+  injector:
+    enabled: false         # we use Spring Cloud Vault directly
+
+postgresql:
+  primary:
+    persistence:
+      size: 1Gi
+
+kafka:
+  controller:
+    replicaCount: 1
+  broker:
+    replicaCount: 1
+  persistence:
+    enabled: false
+
+solace:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+monitoring:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.bank.localtest.me
+  tls: false
+
+# Trim replicas for laptops
+services:
+  api-gateway:          { replicas: 1, hpa: { enabled: false } }
+  auth-service:         { replicas: 1 }
+  customer-service:     { replicas: 1 }
+  account-service:      { replicas: 1 }
+  transaction-service:  { replicas: 1 }
+  notification-service: { replicas: 1 }

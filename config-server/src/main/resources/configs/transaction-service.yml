@@ -1,0 +1,48 @@
+server:
+  port: 8083
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:transactiondb}
+    username: ${db.username:${DB_USER:postgres}}
+    password: ${db.password:${DB_PASSWORD:postgres}}
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 3
+      connection-timeout: 5000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    consumer:
+      group-id: transaction-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.bank.*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      enable-idempotence: true
+
+# Solace JMS for real-time fraud alerts. Credentials from Vault. Fallback to environmental defaults.
+solace:
+  jms:
+    host: ${SOLACE_HOST:tcp://localhost:55555}
+    msg-vpn: ${SOLACE_VPN:default}
+    client-username: ${solace.username:default}
+    client-password: ${solace.password:default}
+    direct-transport: false
+    apiProperties:
+      reconnect_retries: -1
+      reconnect_retry_wait_in_ms: 3000
+
+app:
+  solace:
+    fraud-alerts-topic: banking/fraud/alerts/v1

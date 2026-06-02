@@ -1,0 +1,73 @@
+{{- if .Values.solace.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-solace
+  labels:
+    app.kubernetes.io/name: solace
+    app.kubernetes.io/part-of: banking-platform
+spec:
+  ports:
+    - port: {{ .Values.solace.service.smfPort }}
+      targetPort: smf
+      name: smf
+    - port: {{ .Values.solace.service.semp }}
+      targetPort: semp
+      name: semp
+  selector:
+    app.kubernetes.io/name: solace
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-solace
+  labels:
+    app.kubernetes.io/name: solace
+    app.kubernetes.io/part-of: banking-platform
+spec:
+  serviceName: {{ .Release.Name }}-solace
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: solace
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: solace
+        app.kubernetes.io/part-of: banking-platform
+    spec:
+      securityContext:
+        runAsUser: 1000001
+        fsGroup: 1000001
+      containers:
+        - name: solace
+          image: "{{ .Values.solace.image.repository }}:{{ .Values.solace.image.tag }}"
+          ports:
+            - name: smf
+              containerPort: 55555
+            - name: semp
+              containerPort: 8080
+          env:
+            - name: username_admin_globalaccesslevel
+              value: admin
+            - name: username_admin_password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.solace.adminPasswordSecret }}
+                  key: admin-password
+            - name: system_scaling_maxconnectioncount
+              value: "100"
+          resources:
+            {{- toYaml .Values.solace.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: 55555
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 55555
+            initialDelaySeconds: 60
+            periodSeconds: 30
+{{- end }}

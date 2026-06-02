@@ -1,0 +1,41 @@
+# GCP GKE overrides (free-tier Autopilot or e2-micro Standard).
+global:
+  imageRegistry: us-central1-docker.pkg.dev/PROJECT_ID/banking
+  imageTag: "1.0.0"
+  storageClass: standard-rwo
+
+security:
+  tls:
+    enabled: true
+    issuer: letsencrypt-prod
+  networkPolicy:
+    enabled: true
+
+governance:
+  resourceQuota:
+    enabled: true
+    cpu: "6"
+    memory: "12Gi"
+  podDisruptionBudget:
+    enabled: true
+  audit:
+    enabled: true
+
+vault:
+  server:
+    standalone:
+      enabled: true
+    dataStorage:
+      storageClass: standard-rwo
+
+postgresql:
+  enabled: false        # use Cloud SQL via Workload Identity / Vault dynamic creds
+
+ingress:
+  enabled: true
+  className: gce
+  host: api.example-bank.com
+  tls: true
+
+monitoring:
+  enabled: true
