@@ -1,7 +1,7 @@
 # GCP Free-Tier Deployment & Architectural Guide ($0/Month Budget)
 
 > [!NOTE]
-> Fully integrated with GitHub Actions Workload Identity Federation (WIF) and native Google Cloud Build. Last updated: 2026-06-02.
+> Fully integrated with GitHub Actions WIF (Project: `avid-factor-259206`) and native Google Cloud Build. Last updated: 2026-06-02.
 
 ---
 
