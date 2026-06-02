@@ -1,5 +1,10 @@
 # GCP Free-Tier Deployment & Architectural Guide ($0/Month Budget)
 
+> [!NOTE]
+> Fully integrated with GitHub Actions Workload Identity Federation (WIF) and native Google Cloud Build.
+
+---
+
 This guide outlines how to deploy the entire banking microservice platform (all 9 Java services, React UI, databases, cache, and message brokers) 100% within the **GCP Free Tier** and generous external developer plans without incurring any charges.
 
 ---
