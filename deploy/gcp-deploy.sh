@@ -17,12 +17,8 @@ DB_PASSWORD="${DB_PASSWORD:-postgres}"
 SERVICES=(config-server discovery-server api-gateway auth-service \
           customer-service account-service transaction-service notification-service workflow-service)
 
-echo "==> Enabling required APIs"
-gcloud services enable \
-  run.googleapis.com \
-  artifactregistry.googleapis.com \
-  sqladmin.googleapis.com \
-  cloudbuild.googleapis.com --project "$PROJECT_ID"
+# APIs should be enabled once by the project administrator in Cloud Shell.
+# The CI/CD deployer service account only needs resource deployment permissions.
 
 echo "==> Artifact Registry repo"
 gcloud artifacts repositories create "$ARTIFACT_REPO" \
