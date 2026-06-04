@@ -1,0 +1,77 @@
+# "Light" local profile — no Kafka, no Solace, no scheduled jobs.
+# Brings the local stack down to: Postgres + Vault dev + Camunda + Spring services.
+# Useful for quick UI dev and demoing Camunda flows on a laptop.
+
+global:
+  imageRegistry: localhost:5001/banking
+  imageTag: dev
+  imagePullPolicy: IfNotPresent
+
+security:
+  tls: { enabled: false }
+governance:
+  resourceQuota: { enabled: false }
+  podDisruptionBudget: { enabled: false }
+  audit: { enabled: false }
+
+vault:
+  server:
+    dev:
+      enabled: true
+      devRootToken: "root"
+    standalone: { enabled: false }
+  injector: { enabled: false }
+
+# Disable both messaging stacks
+kafka:
+  enabled: false
+solace:
+  enabled: false
+monitoring:
+  enabled: false
+
+# Apply feature flags via env on every service deployment.
+services:
+  api-gateway:
+    replicas: 1
+    hpa: { enabled: false }
+    env:
+      APP_FEATURES_KAFKA_ENABLED: "false"
+      APP_FEATURES_SOLACE_ENABLED: "false"
+  auth-service:
+    replicas: 1
+    env:
+      APP_FEATURES_KAFKA_ENABLED: "false"
+      APP_FEATURES_SOLACE_ENABLED: "false"
+      APP_FEATURES_SCHEDULER_ENABLED: "false"
+  customer-service:
+    replicas: 1
+    env:
+      APP_FEATURES_KAFKA_ENABLED: "false"
+      APP_FEATURES_SOLACE_ENABLED: "false"
+      APP_FEATURES_SCHEDULER_ENABLED: "false"
+  account-service:
+    replicas: 1
+    env:
+      APP_FEATURES_KAFKA_ENABLED: "false"
+      APP_FEATURES_SOLACE_ENABLED: "false"
+      APP_FEATURES_SCHEDULER_ENABLED: "false"
+  transaction-service:
+    replicas: 1
+    env:
+      APP_FEATURES_KAFKA_ENABLED: "false"
+      APP_FEATURES_SOLACE_ENABLED: "false"
+      APP_FEATURES_SCHEDULER_ENABLED: "false"
+  notification-service:
+    enabled: false           # no point if nothing publishes
+  workflow-service:
+    replicas: 1
+    env:
+      APP_FEATURES_KAFKA_ENABLED: "false"
+      APP_FEATURES_SOLACE_ENABLED: "false"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.bank.localtest.me
+  tls: false

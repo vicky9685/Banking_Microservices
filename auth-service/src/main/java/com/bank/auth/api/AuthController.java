@@ -26,4 +26,9 @@ public class AuthController {
     public ApiResponse<TokenResponse> login(@Valid @RequestBody LoginRequest req) {
         return ApiResponse.ok(authService.login(req));
     }
+
+    @PostMapping("/refresh")
+    public ApiResponse<TokenResponse> refresh(@Valid @RequestBody RefreshRequest req) {
+        return ApiResponse.ok(authService.refresh(req.refreshToken()));
+    }
 }

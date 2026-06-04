@@ -17,6 +17,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +47,8 @@ public class TransferService {
     private final OutboxRepository outboxRepository;
     private final ObjectMapper objectMapper;
     private final FraudDetector fraudDetector;
-    private final FraudAlertPublisher fraudAlertPublisher;
+    /** Optional: skipped when app.features.solace.enabled=false. */
+    private final ObjectProvider<FraudAlertPublisher> fraudAlertPublisher;
     private final WorkflowClient workflowClient;
 
     @Transactional
@@ -70,7 +72,13 @@ public class TransferService {
         // Fraud scoring runs synchronously via Drools, alerts are pushed over Solace
         // (low-latency, guaranteed) so the saga is not blocked by Kafka backpressure.
         var alerts = fraudDetector.evaluate(transfer, req.fromAccountId());
-        alerts.forEach(fraudAlertPublisher::publish);
+        FraudAlertPublisher publisher = fraudAlertPublisher.getIfAvailable();
+        if (publisher != null) {
+            alerts.forEach(publisher::publish);
+        } else if (!alerts.isEmpty()) {
+            log.warn("Solace disabled — {} fraud alert(s) not published for transfer {}",
+                    alerts.size(), transfer.getId());
+        }
 
         // If any CRITICAL alert fired, pause the saga and hand off to Camunda for
         // human approval. The saga resumes only after a /decision callback.

@@ -38,6 +38,7 @@ Java 21 + Spring Boot 3.3 banking platform with Saga, Camunda BPM, Drools, Kafka
 - [`docs/security-and-governance.md`](docs/security-and-governance.md) — controls, STRIDE, runbook
 - [`docs/messaging-strategy.md`](docs/messaging-strategy.md) — Kafka vs. Solace decision
 - [`docs/camunda-integration.md`](docs/camunda-integration.md) — when BPMN beats the saga, scenarios, ops
+- [`docs/feature-flags-and-camunda-security.md`](docs/feature-flags-and-camunda-security.md) — Kafka/Solace/scheduler toggles, account-closure + dispute-resolution processes, Camunda role security, local light mode
 - [`docs/runtime-additions.md`](docs/runtime-additions.md) — Drools, schedulers, caching, UI
 - [`docs/local-setup.md`](docs/local-setup.md) — docker-compose and kind paths
 - [`deploy/cloud-run-notes.md`](deploy/cloud-run-notes.md) — GCP free tier specifics

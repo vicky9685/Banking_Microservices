@@ -1,5 +1,6 @@
 package com.bank.gateway.security;
 
+import com.bank.common.security.ServiceSignature;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -52,10 +53,21 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
+
+        // Strip sensitive internal headers from the client's request to prevent header spoofing/injection
+        ServerHttpRequest.Builder requestBuilder = request.mutate()
+                .headers(headers -> {
+                    headers.remove("X-User-Id");
+                    headers.remove("X-User-Roles");
+                    headers.remove("X-Customer-Id");
+                    headers.remove(ServiceSignature.H_SIGNATURE);
+                    headers.remove(ServiceSignature.H_TIMESTAMP);
+                });
+
         String path = request.getPath().value();
 
         if (OPEN_PATHS.stream().anyMatch(path::startsWith)) {
-            return chain.filter(exchange);
+            return chain.filter(exchange.mutate().request(requestBuilder.build()).build());
         }
 
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
@@ -74,12 +86,17 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
             List<?> roles = claims.get("roles", List.class);
             String rolesHeader = roles == null ? "" : String.join(",", roles.stream().map(Object::toString).toList());
+            String customerId = claims.get("customerId", String.class);
 
-            ServerHttpRequest mutated = request.mutate()
+            requestBuilder
                     .header("X-User-Id", claims.getSubject())
-                    .header("X-User-Roles", rolesHeader)
-                    .build();
-            return chain.filter(exchange.mutate().request(mutated).build());
+                    .header("X-User-Roles", rolesHeader);
+
+            if (customerId != null && !customerId.isBlank()) {
+                requestBuilder.header("X-Customer-Id", customerId);
+            }
+
+            return chain.filter(exchange.mutate().request(requestBuilder.build()).build());
         } catch (Exception ex) {
             log.debug("JWT validation failed: {}", ex.getMessage());
             return unauthorized(exchange, "invalid-token");

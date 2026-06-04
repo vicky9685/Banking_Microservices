@@ -1,0 +1,4 @@
+com.bank.common.config.CommonSecurityAutoConfiguration
+com.bank.common.config.CommonJpaAutoConfiguration
+com.bank.common.config.CommonCacheAutoConfiguration
+com.bank.common.config.CommonWebAutoConfiguration

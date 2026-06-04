@@ -11,8 +11,17 @@ build:                         ## Maven build all modules (skip tests)
 test:                          ## Run all tests
 	mvn -B verify
 
-compose-up:                    ## Local stack via docker-compose (Postgres, Kafka, Solace, Vault dev, services)
+compose-up:                    ## Full local stack via docker-compose (Postgres, Kafka, Solace, Vault, Camunda, services)
 	docker compose up --build -d
+
+compose-up-light:              ## Light local stack: no Kafka, no Solace, no schedulers (env flags disable beans)
+	APP_FEATURES_KAFKA_ENABLED=false \
+	APP_FEATURES_SOLACE_ENABLED=false \
+	APP_FEATURES_SCHEDULER_ENABLED=false \
+	docker compose up --build -d \
+	  postgres redis vault vault-bootstrap \
+	  config-server discovery-server api-gateway \
+	  auth-service customer-service account-service transaction-service workflow-service ui
 
 compose-down:                  ## Tear down docker-compose stack
 	docker compose down -v
@@ -23,11 +32,18 @@ kind-up:                       ## Provision local kind cluster + Helm install
 kind-down:                     ## Delete local kind cluster
 	bash local-setup/teardown.sh
 
-deploy-local:                  ## Helm install / upgrade against current kube-context
+deploy-local:                  ## Helm install / upgrade — full local stack
 	helm dependency update helm/banking-platform/
 	helm upgrade --install banking helm/banking-platform/ \
 	  -n banking --create-namespace \
 	  -f helm/banking-platform/values-local.yaml
+
+deploy-local-light:            ## Helm install / upgrade — no Kafka/Solace/scheduler (Camunda still on)
+	helm dependency update helm/banking-platform/
+	helm upgrade --install banking helm/banking-platform/ \
+	  -n banking --create-namespace \
+	  -f helm/banking-platform/values-local.yaml \
+	  -f helm/banking-platform/values-local-light.yaml
 
 helm-template:                 ## Render manifests locally
 	helm template banking helm/banking-platform/ -f helm/banking-platform/values-local.yaml

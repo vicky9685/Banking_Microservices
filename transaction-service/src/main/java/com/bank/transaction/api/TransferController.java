@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -21,6 +22,7 @@ public class TransferController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
+    @PreAuthorize("hasRole('CUSTOMER') or hasRole('BACKOFFICE')")
     public ApiResponse<TransferResponse> initiate(@Valid @RequestBody TransferRequest req,
                                                   @RequestHeader(value = "Idempotency-Key", required = false) String idemHeader) {
         if (req.idempotencyKey() == null && idemHeader != null) {
@@ -31,16 +33,19 @@ public class TransferController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<TransferResponse> get(@PathVariable UUID id) {
         return ApiResponse.ok(transferService.get(id));
     }
 
     /**
      * Decision callback from workflow-service after a human reviews a held transfer.
-     * Auth: in production this would require a service-to-service mTLS identity or
-     * a signed token, since the callback can release funds.
+     * Restricted to RISK_OFFICER / SENIOR_RISK_OFFICER / BACKOFFICE because the
+     * call releases funds. The HMAC service-signature filter blocks direct hits
+     * regardless; this is the user-identity layer.
      */
     @PostMapping("/{id}/decision")
+    @PreAuthorize("hasAnyRole('RISK_OFFICER','SENIOR_RISK_OFFICER','BACKOFFICE')")
     public ApiResponse<TransferResponse> decision(@PathVariable UUID id,
                                                   @RequestParam boolean approved,
                                                   @RequestParam(required = false) String comment) {

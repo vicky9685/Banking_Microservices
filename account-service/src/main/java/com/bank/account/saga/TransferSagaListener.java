@@ -7,6 +7,7 @@ import com.bank.common.events.TransactionEvents.*;
 import com.bank.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -23,6 +24,7 @@ import java.util.UUID;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(value = "app.features.kafka.enabled", havingValue = "true", matchIfMissing = true)
 public class TransferSagaListener {
 
     private final AccountRepository repository;

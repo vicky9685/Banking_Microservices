@@ -1,5 +1,6 @@
 package com.bank.customer.domain;
 
+import com.bank.common.security.EncryptedStringConverter;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -36,10 +37,16 @@ public class Customer {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(nullable = false, length = 500)
     private String phone;
 
-    @Column(name = "national_id", nullable = false, unique = true)
+    /**
+     * National IDs are encrypted at rest. Lookups by national ID would require a
+     * deterministic hash column (omitted here for brevity) — recommended next step.
+     */
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(name = "national_id", nullable = false, length = 500)
     private String nationalId;
 
     private LocalDate dateOfBirth;

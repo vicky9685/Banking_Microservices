@@ -3,8 +3,8 @@ CREATE TABLE customers (
     first_name      VARCHAR(100) NOT NULL,
     last_name       VARCHAR(100) NOT NULL,
     email           VARCHAR(255) NOT NULL UNIQUE,
-    phone           VARCHAR(30)  NOT NULL,
-    national_id     VARCHAR(50)  NOT NULL UNIQUE,
+    phone           VARCHAR(500) NOT NULL,        -- AES-GCM ciphertext, base64
+    national_id     VARCHAR(500) NOT NULL UNIQUE, -- AES-GCM ciphertext, base64
     date_of_birth   DATE,
     kyc_status      VARCHAR(20)  NOT NULL,
     line1           VARCHAR(255),

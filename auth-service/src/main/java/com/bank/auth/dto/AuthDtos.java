@@ -19,5 +19,7 @@ public final class AuthDtos {
             @NotBlank String username,
             @NotBlank String password) {}
 
-    public record TokenResponse(String accessToken, long expiresInSec, String tokenType) {}
+    public record TokenResponse(String accessToken, String refreshToken, long expiresInSec, String tokenType) {}
+
+    public record RefreshRequest(@NotBlank String refreshToken) {}
 }

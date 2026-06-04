@@ -1,6 +1,7 @@
 package com.bank.notification.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.annotation.EnableJms;
@@ -13,6 +14,7 @@ import jakarta.jms.ConnectionFactory;
 
 @Configuration
 @EnableJms
+@ConditionalOnProperty(value = "app.features.solace.enabled", havingValue = "true", matchIfMissing = true)
 public class SolaceConsumerConfig {
 
     @Bean

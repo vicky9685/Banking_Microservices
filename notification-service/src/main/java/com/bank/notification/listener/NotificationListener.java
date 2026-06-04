@@ -4,6 +4,7 @@ import com.bank.common.events.KafkaTopics;
 import com.bank.common.events.TransactionEvents.TransferCompleted;
 import com.bank.common.events.TransactionEvents.TransferFailed;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(value = "app.features.kafka.enabled", havingValue = "true", matchIfMissing = true)
 public class NotificationListener {
 
     @KafkaListener(topics = KafkaTopics.NOTIFICATIONS, groupId = "notification-service")

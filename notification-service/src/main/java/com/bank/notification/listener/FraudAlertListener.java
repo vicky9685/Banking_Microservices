@@ -2,6 +2,7 @@ package com.bank.notification.listener;
 
 import com.bank.common.events.FraudAlert;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(value = "app.features.solace.enabled", havingValue = "true", matchIfMissing = true)
 public class FraudAlertListener {
 
     @JmsListener(

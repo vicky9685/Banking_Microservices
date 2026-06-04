@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="defs-dispute-resolution" targetNamespace="http://bank.com/bpmn">
+  <bpmn:process id="dispute-resolution" name="Dispute Resolution" isExecutable="true" camunda:historyTimeToLive="365">
+
+    <bpmn:startEvent id="StartEvent_Filed" name="Dispute filed">
+      <bpmn:outgoing>F1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="F1" sourceRef="StartEvent_Filed" targetRef="Task_OpenCase"/>
+
+    <bpmn:serviceTask id="Task_OpenCase" name="Open dispute case"
+                      camunda:delegateExpression="${disputeOpenDelegate}">
+      <bpmn:incoming>F1</bpmn:incoming>
+      <bpmn:outgoing>F2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="F2" sourceRef="Task_OpenCase" targetRef="UserTask_Analyst"/>
+
+    <bpmn:userTask id="UserTask_Analyst" name="Analyst investigation"
+                   camunda:candidateGroups="dispute-analysts"
+                   camunda:dueDate="${dueDate}"
+                   camunda:formKey="dispute-investigation">
+      <bpmn:incoming>F2</bpmn:incoming>
+      <bpmn:outgoing>F3</bpmn:outgoing>
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="resolution" label="Resolution" type="enum">
+            <camunda:value id="REFUND" name="Refund customer"/>
+            <camunda:value id="REJECT" name="Reject claim"/>
+            <camunda:value id="ESCALATE" name="Escalate to legal"/>
+          </camunda:formField>
+          <camunda:formField id="notes" label="Investigation notes" type="string"/>
+        </camunda:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="F3" sourceRef="UserTask_Analyst" targetRef="Gateway_Resolution"/>
+
+    <bpmn:exclusiveGateway id="Gateway_Resolution" name="Resolution?">
+      <bpmn:incoming>F3</bpmn:incoming>
+      <bpmn:outgoing>Flow_Refund</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Reject</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Escalate</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:sequenceFlow id="Flow_Refund" sourceRef="Gateway_Resolution" targetRef="Task_Refund">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${resolution == "REFUND"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Reject" sourceRef="Gateway_Resolution" targetRef="Task_CloseRejected">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${resolution == "REJECT"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Escalate" sourceRef="Gateway_Resolution" targetRef="UserTask_Legal">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${resolution == "ESCALATE"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="Task_Refund" name="Issue refund"
+                      camunda:delegateExpression="${disputeRefundDelegate}">
+      <bpmn:incoming>Flow_Refund</bpmn:incoming>
+      <bpmn:outgoing>F4</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="F4" sourceRef="Task_Refund" targetRef="EndEvent_Resolved"/>
+
+    <bpmn:serviceTask id="Task_CloseRejected" name="Close case (rejected)"
+                      camunda:delegateExpression="${disputeCloseDelegate}">
+      <bpmn:incoming>Flow_Reject</bpmn:incoming>
+      <bpmn:outgoing>F5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="F5" sourceRef="Task_CloseRejected" targetRef="EndEvent_Resolved"/>
+
+    <bpmn:userTask id="UserTask_Legal" name="Legal review"
+                   camunda:candidateGroups="legal">
+      <bpmn:incoming>Flow_Escalate</bpmn:incoming>
+      <bpmn:outgoing>F6</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="F6" sourceRef="UserTask_Legal" targetRef="EndEvent_Resolved"/>
+
+    <bpmn:endEvent id="EndEvent_Resolved" name="Resolved">
+      <bpmn:incoming>F4</bpmn:incoming>
+      <bpmn:incoming>F5</bpmn:incoming>
+      <bpmn:incoming>F6</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- 5-business-day SLA on analyst step; missed SLA escalates to senior analyst. -->
+    <bpmn:boundaryEvent id="Boundary_AnalystSLA" attachedToRef="UserTask_Analyst" cancelActivity="false">
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">P5D</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+      <bpmn:outgoing>Flow_SLA</bpmn:outgoing>
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_SLA" sourceRef="Boundary_AnalystSLA" targetRef="Task_NotifyManager"/>
+
+    <bpmn:serviceTask id="Task_NotifyManager" name="Notify manager (SLA breach)"
+                      camunda:delegateExpression="${disputeSlaBreachDelegate}">
+      <bpmn:incoming>Flow_SLA</bpmn:incoming>
+      <bpmn:outgoing>Flow_SLA_End</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_SLA_End" sourceRef="Task_NotifyManager" targetRef="EndEvent_SlaBreach"/>
+
+    <bpmn:endEvent id="EndEvent_SlaBreach" name="SLA breach logged">
+      <bpmn:incoming>Flow_SLA_End</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

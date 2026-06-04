@@ -1,10 +1,19 @@
 # Shared defaults for every service. Override via {service}.yml.
 app:
+  features:
+    # All toggles default ON. Flip via env vars: APP_FEATURES_KAFKA_ENABLED=false etc.
+    kafka:     { enabled: ${APP_FEATURES_KAFKA_ENABLED:true} }
+    solace:    { enabled: ${APP_FEATURES_SOLACE_ENABLED:true} }
+    scheduler: { enabled: ${APP_FEATURES_SCHEDULER_ENABLED:true} }
+    camunda:   { enabled: ${APP_FEATURES_CAMUNDA_ENABLED:true} }
   security:
     jwt:
       secret: ${JWT_SECRET:change-me-please-this-is-a-dev-only-secret-please-replace-32chars-min}
       expiration-ms: 3600000
       issuer: banking-platform
+    service-auth:
+      enabled: ${SERVICE_AUTH_ENABLED:true}
+      hmac-key: ${service.hmac.key:dev-only-internal-shared-key-please-rotate}
 
 management:
   endpoints:

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="defs-account-closure" targetNamespace="http://bank.com/bpmn">
+  <bpmn:process id="account-closure" name="Account Closure" isExecutable="true" camunda:historyTimeToLive="365">
+
+    <bpmn:startEvent id="StartEvent_Requested" name="Closure requested">
+      <bpmn:outgoing>F1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="F1" sourceRef="StartEvent_Requested" targetRef="Task_FreezeAccount"/>
+
+    <bpmn:serviceTask id="Task_FreezeAccount" name="Freeze account (no new debits)"
+                      camunda:delegateExpression="${freezeAccountDelegate}">
+      <bpmn:incoming>F1</bpmn:incoming>
+      <bpmn:outgoing>F2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="F2" sourceRef="Task_FreezeAccount" targetRef="Task_CheckBalance"/>
+
+    <bpmn:serviceTask id="Task_CheckBalance" name="Check residual balance"
+                      camunda:delegateExpression="${balanceCheckDelegate}">
+      <bpmn:incoming>F2</bpmn:incoming>
+      <bpmn:outgoing>F3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="F3" sourceRef="Task_CheckBalance" targetRef="Gateway_Balance"/>
+
+    <bpmn:exclusiveGateway id="Gateway_Balance" name="Has balance?">
+      <bpmn:incoming>F3</bpmn:incoming>
+      <bpmn:outgoing>Flow_HasBalance</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NoBalance</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:sequenceFlow id="Flow_HasBalance" sourceRef="Gateway_Balance" targetRef="UserTask_DisburseInstructions">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${residualBalance > 0}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_NoBalance" sourceRef="Gateway_Balance" targetRef="IntermediateEvent_CoolingOff">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${residualBalance == 0}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:userTask id="UserTask_DisburseInstructions" name="Customer: confirm disbursement target"
+                   camunda:candidateGroups="customers"
+                   camunda:formKey="closure-disbursement">
+      <bpmn:incoming>Flow_HasBalance</bpmn:incoming>
+      <bpmn:outgoing>F4</bpmn:outgoing>
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="payoutAccountId" label="Payout account UUID" type="string"/>
+        </camunda:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="F4" sourceRef="UserTask_DisburseInstructions" targetRef="Task_DisburseResidual"/>
+
+    <bpmn:serviceTask id="Task_DisburseResidual" name="Disburse residual balance"
+                      camunda:delegateExpression="${disburseResidualDelegate}">
+      <bpmn:incoming>F4</bpmn:incoming>
+      <bpmn:outgoing>F5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="F5" sourceRef="Task_DisburseResidual" targetRef="IntermediateEvent_CoolingOff"/>
+
+    <!-- Regulatory cooling-off: customer can cancel within N days. -->
+    <bpmn:intermediateCatchEvent id="IntermediateEvent_CoolingOff" name="Cooling-off period">
+      <bpmn:incoming>Flow_NoBalance</bpmn:incoming>
+      <bpmn:incoming>F5</bpmn:incoming>
+      <bpmn:outgoing>F6</bpmn:outgoing>
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${coolingOffDuration}</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+
+    <bpmn:sequenceFlow id="F6" sourceRef="IntermediateEvent_CoolingOff" targetRef="Task_FinalClose"/>
+
+    <bpmn:serviceTask id="Task_FinalClose" name="Mark account CLOSED"
+                      camunda:delegateExpression="${closeAccountDelegate}">
+      <bpmn:incoming>F6</bpmn:incoming>
+      <bpmn:outgoing>F7</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="F7" sourceRef="Task_FinalClose" targetRef="EndEvent_Closed"/>
+
+    <bpmn:endEvent id="EndEvent_Closed" name="Closed">
+      <bpmn:incoming>F7</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Customer can cancel during cooling-off via a message event correlated by closureCaseId. -->
+    <bpmn:boundaryEvent id="Boundary_Cancel" attachedToRef="IntermediateEvent_CoolingOff" cancelActivity="true">
+      <bpmn:messageEventDefinition messageRef="Msg_CancelClosure"/>
+      <bpmn:outgoing>Flow_Cancel</bpmn:outgoing>
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_Cancel" sourceRef="Boundary_Cancel" targetRef="Task_Unfreeze"/>
+
+    <bpmn:serviceTask id="Task_Unfreeze" name="Unfreeze account"
+                      camunda:delegateExpression="${unfreezeAccountDelegate}">
+      <bpmn:incoming>Flow_Cancel</bpmn:incoming>
+      <bpmn:outgoing>Flow_End_Cancel</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_End_Cancel" sourceRef="Task_Unfreeze" targetRef="EndEvent_Cancelled"/>
+    <bpmn:endEvent id="EndEvent_Cancelled" name="Closure cancelled">
+      <bpmn:incoming>Flow_End_Cancel</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+
+  <bpmn:message id="Msg_CancelClosure" name="CancelClosure"/>
+</bpmn:definitions>
