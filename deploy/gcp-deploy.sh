@@ -29,7 +29,7 @@ gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
 echo "==> Cloud SQL (free-tier db-f1-micro)"
 gcloud sql instances create "$SQL_INSTANCE" \
-  --database-version=POSTGRES_16 --tier=db-f1-micro \
+  --database-version=POSTGRES_16 --tier=db-f1-micro --edition=ENTERPRISE \
   --region="$REGION" --storage-size=10GB --storage-type=HDD \
   --project="$PROJECT_ID" || true
 
