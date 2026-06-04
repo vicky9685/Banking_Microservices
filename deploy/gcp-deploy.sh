@@ -23,7 +23,7 @@ SERVICES=(config-server discovery-server api-gateway auth-service \
 echo "==> Artifact Registry repo"
 gcloud artifacts repositories create "$ARTIFACT_REPO" \
   --repository-format=docker --location="$REGION" \
-  --project="$PROJECT_ID" 2>/dev/null || true
+  --project="$PROJECT_ID" || true
 
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
@@ -31,13 +31,13 @@ echo "==> Cloud SQL (free-tier db-f1-micro)"
 gcloud sql instances create "$SQL_INSTANCE" \
   --database-version=POSTGRES_16 --tier=db-f1-micro \
   --region="$REGION" --storage-size=10GB --storage-type=HDD \
-  --project="$PROJECT_ID" 2>/dev/null || true
+  --project="$PROJECT_ID" || true
 
 # Provision databases for ALL microservices including workflowdb
 for db in customerdb accountdb transactiondb authdb workflowdb; do
   echo "==> Creating database: $db"
   gcloud sql databases create "$db" --instance="$SQL_INSTANCE" \
-    --project="$PROJECT_ID" 2>/dev/null || true
+    --project="$PROJECT_ID" || true
 done
 
 CONN="$(gcloud sql instances describe "$SQL_INSTANCE" --project="$PROJECT_ID" --format='value(connectionName)')"
